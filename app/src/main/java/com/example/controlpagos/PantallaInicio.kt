@@ -30,7 +30,13 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
     val anioActual = calendar.get(Calendar.YEAR)
     val claveActual = "$mesActual-$anioActual"
 
-    val totalMesActual = cuentasPorMes[claveActual]?.sumOf { it.monto } ?: 0.0
+    val cuentasMesActual = cuentasPorMes[claveActual].orEmpty()
+    val totalPendienteMesActual = cuentasMesActual
+        .filter { !it.pagada }
+        .sumOf { it.monto }
+    val totalPagadoMesActual = cuentasMesActual
+        .filter { it.pagada }
+        .sumOf { it.monto }
 
     fun obtenerNombreMes(clave: String): String {
         val partes = clave.split("-")
@@ -47,6 +53,7 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
     }
 
     val proximosPagos = listaCuentas
+        .filter { !it.pagada }
         .sortedBy { parseFechaApp(it.fecha) ?: Date(Long.MAX_VALUE) }
         .take(3)
 
@@ -88,16 +95,21 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
 
-                    Text(
-                        text = "Total del mes actual",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Text(text = "Pendiente del mes actual", style = MaterialTheme.typography.titleMedium)
 
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = formatearMontoApp(totalMesActual),
+                        text = formatearMontoApp(totalPendienteMesActual),
                         style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Pagado: ${formatearMontoApp(totalPagadoMesActual)}",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
@@ -200,6 +212,8 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
         cuentasPorMes.toSortedMap(compareByDescending { it }).forEach { (clave, cuentas) ->
 
             val totalMes = cuentas.sumOf { it.monto }
+            val totalPendiente = cuentas.filter { !it.pagada }.sumOf { it.monto }
+            val totalPagado = cuentas.filter { it.pagada }.sumOf { it.monto }
 
             item {
                 Spacer(modifier = Modifier.height(10.dp))
@@ -222,6 +236,12 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
                         Text(
                             text = "Total: ${formatearMontoApp(totalMes)}",
                             color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Text(
+                            text = "Pendiente: ${formatearMontoApp(totalPendiente)} | Pagado: ${formatearMontoApp(totalPagado)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

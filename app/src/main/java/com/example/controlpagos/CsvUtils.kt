@@ -3,13 +3,15 @@ package com.example.controlpagos
 import com.example.controlpagos.model.Cuenta
 
 fun cuentasToCsv(cuentas: List<Cuenta>): String {
-    val header = "nombre,numeroCuenta,monto,fecha"
+    val header = "nombre,numeroCuenta,monto,fecha,pagada,fechaPago"
     val filas = cuentas.joinToString("\n") { cuenta ->
         listOf(
             escaparCsv(cuenta.nombre),
             escaparCsv(cuenta.numeroCuenta),
             cuenta.monto.toString(),
-            escaparCsv(cuenta.fecha)
+            escaparCsv(cuenta.fecha),
+            cuenta.pagada.toString(),
+            escaparCsv(cuenta.fechaPago.orEmpty())
         ).joinToString(",")
     }
     return if (filas.isBlank()) "$header\n" else "$header\n$filas\n"
@@ -33,6 +35,8 @@ fun csvToCuentas(csv: String): List<Cuenta> {
         val numeroCuenta = columnas[1].trim()
         val monto = columnas[2].trim().toDoubleOrNull() ?: return@mapNotNull null
         val fecha = columnas[3].trim()
+        val pagada = columnas.getOrNull(4)?.trim()?.toBooleanStrictOrNull() ?: false
+        val fechaPago = columnas.getOrNull(5)?.trim()?.ifBlank { null }
 
         if (nombre.isBlank() || numeroCuenta.isBlank() || fecha.isBlank() || monto <= 0.0) {
             return@mapNotNull null
@@ -44,7 +48,9 @@ fun csvToCuentas(csv: String): List<Cuenta> {
             nombre = nombre,
             numeroCuenta = numeroCuenta,
             monto = monto,
-            fecha = fecha
+            fecha = fecha,
+            pagada = pagada,
+            fechaPago = fechaPago
         )
     }
 }

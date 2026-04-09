@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import java.util.Date
 
 data class PantallaPrincipalUiState(
     val listaCuentas: List<Cuenta> = emptyList(),
@@ -22,6 +24,7 @@ data class PantallaPrincipalUiState(
     val cuentaAEliminar: Cuenta? = null,
     val textoBuscadorLista: String = "",
     val filtroSeleccionadoLista: String = "nombre",
+    val filtroEstadoLista: String = "todas",
     val cuentaAEliminarLista: Cuenta? = null,
     val mensajeSistema: String? = null
 )
@@ -46,7 +49,8 @@ class PantallaPrincipalViewModel(
                     cuentasFiltradasLista = filtrarCuentas(
                         cuentas = cuentas,
                         texto = estado.textoBuscadorLista,
-                        filtro = estado.filtroSeleccionadoLista
+                            filtro = estado.filtroSeleccionadoLista,
+                            filtroEstado = estado.filtroEstadoLista
                     )
                 )
             }
@@ -72,6 +76,24 @@ class PantallaPrincipalViewModel(
             cuentaRepository.eliminarCuenta(cuenta)
             cargarCuentas()
         }
+    }
+
+    fun marcarCuentaComoPagada(cuenta: Cuenta) {
+        if (cuenta.pagada) return
+        val cuentaActualizada = cuenta.copy(
+            pagada = true,
+            fechaPago = formatearFechaApp(Date())
+        )
+        actualizarCuenta(cuentaActualizada)
+    }
+
+    fun reabrirCuenta(cuenta: Cuenta) {
+        if (!cuenta.pagada) return
+        val cuentaActualizada = cuenta.copy(
+            pagada = false,
+            fechaPago = null
+        )
+        actualizarCuenta(cuentaActualizada)
     }
 
     fun importarCuentas(cuentas: List<Cuenta>) {
@@ -136,6 +158,29 @@ class PantallaPrincipalViewModel(
             estado.fecha.isNotBlank()
     }
 
+    fun esNumeroCuentaDuplicadoEnMes(
+        numeroCuenta: String,
+        fecha: String,
+        idExcluir: Int? = null
+    ): Boolean {
+        val numeroNormalizado = numeroCuenta.trim()
+        val fechaReferencia = parseFechaApp(fecha) ?: return false
+        if (numeroNormalizado.isBlank()) return false
+
+        val referencia = Calendar.getInstance().apply { time = fechaReferencia }
+
+        return _uiState.value.listaCuentas.any { cuenta ->
+            if (idExcluir != null && cuenta.id == idExcluir) return@any false
+            if (!cuenta.numeroCuenta.trim().equals(numeroNormalizado, ignoreCase = true)) return@any false
+
+            val fechaCuenta = parseFechaApp(cuenta.fecha) ?: return@any false
+            val calendarCuenta = Calendar.getInstance().apply { time = fechaCuenta }
+
+            calendarCuenta.get(Calendar.MONTH) == referencia.get(Calendar.MONTH) &&
+                calendarCuenta.get(Calendar.YEAR) == referencia.get(Calendar.YEAR)
+        }
+    }
+
     fun abrirCalendario() {
         _uiState.update { it.copy(mostrarCalendario = true) }
     }
@@ -159,7 +204,8 @@ class PantallaPrincipalViewModel(
                 cuentasFiltradasLista = filtrarCuentas(
                     cuentas = estado.listaCuentas,
                     texto = valor,
-                    filtro = estado.filtroSeleccionadoLista
+                    filtro = estado.filtroSeleccionadoLista,
+                    filtroEstado = estado.filtroEstadoLista
                 )
             )
         }
@@ -172,7 +218,8 @@ class PantallaPrincipalViewModel(
                 cuentasFiltradasLista = filtrarCuentas(
                     cuentas = estado.listaCuentas,
                     texto = "",
-                    filtro = estado.filtroSeleccionadoLista
+                    filtro = estado.filtroSeleccionadoLista,
+                    filtroEstado = estado.filtroEstadoLista
                 )
             )
         }
@@ -185,7 +232,22 @@ class PantallaPrincipalViewModel(
                 cuentasFiltradasLista = filtrarCuentas(
                     cuentas = estado.listaCuentas,
                     texto = estado.textoBuscadorLista,
-                    filtro = valor
+                    filtro = valor,
+                    filtroEstado = estado.filtroEstadoLista
+                )
+            )
+        }
+    }
+
+    fun onFiltroEstadoListaChange(valor: String) {
+        _uiState.update { estado ->
+            estado.copy(
+                filtroEstadoLista = valor,
+                cuentasFiltradasLista = filtrarCuentas(
+                    cuentas = estado.listaCuentas,
+                    texto = estado.textoBuscadorLista,
+                    filtro = estado.filtroSeleccionadoLista,
+                    filtroEstado = valor
                 )
             )
         }
@@ -203,15 +265,30 @@ class PantallaPrincipalViewModel(
         _uiState.update { it.copy(mensajeSistema = null) }
     }
 
-    private fun filtrarCuentas(cuentas: List<Cuenta>, texto: String, filtro: String): List<Cuenta> {
-        if (texto.isBlank()) return cuentas
-
+    private fun filtrarCuentas(
+        cuentas: List<Cuenta>,
+        texto: String,
+        filtro: String,
+        filtroEstado: String
+    ): List<Cuenta> {
         return cuentas.filter { cuenta ->
-            when (filtro) {
-                "nombre" -> cuenta.nombre.contains(texto, ignoreCase = true)
-                "cuenta" -> cuenta.numeroCuenta.contains(texto, ignoreCase = true)
+            val coincideEstado = when (filtroEstado) {
+                "pendientes" -> !cuenta.pagada
+                "pagadas" -> cuenta.pagada
                 else -> true
             }
+
+            val coincideTexto = if (texto.isBlank()) {
+                true
+            } else {
+                when (filtro) {
+                    "nombre" -> cuenta.nombre.contains(texto, ignoreCase = true)
+                    "cuenta" -> cuenta.numeroCuenta.contains(texto, ignoreCase = true)
+                    else -> true
+                }
+            }
+
+            coincideEstado && coincideTexto
         }
     }
 }

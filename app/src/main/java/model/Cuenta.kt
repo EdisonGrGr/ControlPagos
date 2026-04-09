@@ -12,5 +12,7 @@ data class Cuenta(
     val nombre: String,
     val numeroCuenta: String,
     val monto: Double,
-    val fecha: String
+    val fecha: String,
+    val pagada: Boolean = false,
+    val fechaPago: String? = null
 )

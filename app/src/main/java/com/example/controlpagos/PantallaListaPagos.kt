@@ -3,6 +3,8 @@ package com.example.controlpagos
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,8 +18,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -36,6 +41,21 @@ fun PantallaListaPagosScreen(
     val cuentasFiltradas = uiState.cuentasFiltradasLista
     val snackBarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val hoy = remember { Date() }
+    var ordenSeleccionado by rememberSaveable { mutableStateOf("fechaAsc") }
+
+    val totalTodas = uiState.listaCuentas.size
+    val totalPendientes = uiState.listaCuentas.count { !it.pagada }
+    val totalPagadas = uiState.listaCuentas.count { it.pagada }
+
+    val cuentasOrdenadas = remember(cuentasFiltradas, ordenSeleccionado) {
+        when (ordenSeleccionado) {
+            "fechaDesc" -> cuentasFiltradas.sortedByDescending { parseFechaApp(it.fecha) ?: Date(Long.MIN_VALUE) }
+            "montoAsc" -> cuentasFiltradas.sortedBy { it.monto }
+            "montoDesc" -> cuentasFiltradas.sortedByDescending { it.monto }
+            else -> cuentasFiltradas.sortedBy { parseFechaApp(it.fecha) ?: Date(Long.MAX_VALUE) }
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
@@ -169,14 +189,88 @@ fun PantallaListaPagosScreen(
                 )
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = uiState.filtroEstadoLista == "todas",
+                    onClick = {
+                        viewModel.onFiltroEstadoListaChange("todas")
+                    },
+                    label = { Text("Todas ($totalTodas)") }
+                )
+                FilterChip(
+                    selected = uiState.filtroEstadoLista == "pendientes",
+                    onClick = {
+                        viewModel.onFiltroEstadoListaChange("pendientes")
+                    },
+                    label = { Text("Pendientes ($totalPendientes)") }
+                )
+                FilterChip(
+                    selected = uiState.filtroEstadoLista == "pagadas",
+                    onClick = {
+                        viewModel.onFiltroEstadoListaChange("pagadas")
+                    },
+                    label = { Text("Pagadas ($totalPagadas)") }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = ordenSeleccionado == "fechaAsc",
+                    onClick = { ordenSeleccionado = "fechaAsc" },
+                    label = { Text("Fecha asc") }
+                )
+                FilterChip(
+                    selected = ordenSeleccionado == "fechaDesc",
+                    onClick = { ordenSeleccionado = "fechaDesc" },
+                    label = { Text("Fecha desc") }
+                )
+                FilterChip(
+                    selected = ordenSeleccionado == "montoAsc",
+                    onClick = { ordenSeleccionado = "montoAsc" },
+                    label = { Text("Monto asc") }
+                )
+                FilterChip(
+                    selected = ordenSeleccionado == "montoDesc",
+                    onClick = { ordenSeleccionado = "montoDesc" },
+                    label = { Text("Monto desc") }
+                )
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             LazyColumn {
-                items(cuentasFiltradas) { cuenta ->
+                items(cuentasOrdenadas, key = { it.id }) { cuenta ->
+                    val fechaPago = parseFechaApp(cuenta.fecha)
+                    val vencido = !cuenta.pagada && fechaPago != null && fechaPago.before(hoy)
+                    val colorCardAnimado by animateColorAsState(
+                        targetValue = if (cuenta.pagada) {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        },
+                        animationSpec = tween(durationMillis = 350),
+                        label = "lista_card_pago_color"
+                    )
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp)
+                            .padding(8.dp),
+                        colors = CardDefaults.cardColors(containerColor = colorCardAnimado)
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp)
@@ -190,14 +284,62 @@ fun PantallaListaPagosScreen(
                             Text("Numero de cuenta: ${cuenta.numeroCuenta}")
                             Text("Fecha: ${cuenta.fecha}")
 
+                            AssistChip(
+                                onClick = {},
+                                enabled = false,
+                                label = {
+                                    Text(
+                                        if (cuenta.pagada) {
+                                            "Pagada${cuenta.fechaPago?.let { " - " + it } ?: ""}"
+                                        } else {
+                                            if (vencido) "Pendiente vencida" else "Pendiente"
+                                        }
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    disabledContainerColor = when {
+                                        cuenta.pagada -> MaterialTheme.colorScheme.primaryContainer
+                                        vencido -> MaterialTheme.colorScheme.errorContainer
+                                        else -> MaterialTheme.colorScheme.surfaceVariant
+                                    },
+                                    disabledLabelColor = when {
+                                        cuenta.pagada -> MaterialTheme.colorScheme.onPrimaryContainer
+                                        vencido -> MaterialTheme.colorScheme.onErrorContainer
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            )
+
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Button(
-                                onClick = {
-                                    viewModel.solicitarEliminarLista(cuenta)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        if (cuenta.pagada) {
+                                            viewModel.reabrirCuenta(cuenta)
+                                            recordatorioHelper.programarRecordatorio(
+                                                cuenta.nombre,
+                                                cuenta.numeroCuenta,
+                                                cuenta.fecha
+                                            )
+                                        } else {
+                                            viewModel.marcarCuentaComoPagada(cuenta)
+                                            recordatorioHelper.cancelarRecordatorio(cuenta.numeroCuenta)
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(if (cuenta.pagada) "Reabrir" else "Marcar pagada")
                                 }
-                            ) {
-                                Text("Eliminar")
+
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.solicitarEliminarLista(cuenta)
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Eliminar")
+                                }
                             }
                         }
                     }

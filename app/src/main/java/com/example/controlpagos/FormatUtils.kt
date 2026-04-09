@@ -19,6 +19,11 @@ fun formatearFechaDesdeMillisUtc(millis: Long): String {
     return formatter.format(Date(millis))
 }
 
+fun formatearFechaApp(fecha: Date): String {
+    val formatter = SimpleDateFormat(PATRON_FECHA_APP, Locale.getDefault())
+    return formatter.format(fecha)
+}
+
 fun formatearMontoApp(monto: Double): String {
     return String.format(Locale.US, "$%,.2f", monto)
 }

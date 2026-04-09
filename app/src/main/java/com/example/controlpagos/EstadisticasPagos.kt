@@ -42,8 +42,16 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>) {
     }
 
     val totalGeneral = remember(listaCuentas) { listaCuentas.sumOf { it.monto } }
-    val totalVencidas = remember(cuentasConFecha) { cuentasConFecha.count { it.second.before(hoy) } }
-    val totalPendientes = remember(cuentasConFecha) { cuentasConFecha.count { !it.second.before(hoy) } }
+    val totalPendienteMonto = remember(listaCuentas) {
+        listaCuentas.filter { !it.pagada }.sumOf { it.monto }
+    }
+    val totalPagadoMonto = remember(listaCuentas) {
+        listaCuentas.filter { it.pagada }.sumOf { it.monto }
+    }
+    val totalVencidas = remember(cuentasConFecha) {
+        cuentasConFecha.count { (cuenta, fecha) -> !cuenta.pagada && fecha.before(hoy) }
+    }
+    val totalPendientes = remember(listaCuentas) { listaCuentas.count { !it.pagada } }
     val promedio = remember(listaCuentas) {
         if (listaCuentas.isEmpty()) 0.0 else totalGeneral / listaCuentas.size
     }
@@ -73,16 +81,20 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>) {
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                KpiMiniCard("Total", formatearMontoApp(totalGeneral), Modifier.weight(1f))
+                KpiMiniCard("Pendiente", formatearMontoApp(totalPendienteMonto), Modifier.weight(1f))
                 KpiMiniCard("Vencidas", totalVencidas.toString(), Modifier.weight(1f))
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KpiMiniCard("Pagado", formatearMontoApp(totalPagadoMonto), Modifier.weight(1f))
                 KpiMiniCard("Pendientes", totalPendientes.toString(), Modifier.weight(1f))
-                KpiMiniCard("Promedio", formatearMontoApp(promedio), Modifier.weight(1f))
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            KpiMiniCard("Promedio", formatearMontoApp(promedio), Modifier.fillMaxWidth())
 
             Spacer(modifier = Modifier.height(16.dp))
 

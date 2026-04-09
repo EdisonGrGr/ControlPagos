@@ -1,13 +1,17 @@
 package com.example.controlpagos
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -22,7 +26,7 @@ fun PantallaPrincipal(viewModel: PantallaPrincipalViewModel) {
 
     val uiState by viewModel.uiState.collectAsState()
     val listaCuentas = uiState.listaCuentas
-    val total = listaCuentas.sumOf { it.monto }
+    val total = listaCuentas.filter { !it.pagada }.sumOf { it.monto }
     val totalTexto = formatearMontoApp(total)
 
     val context = LocalContext.current
@@ -31,6 +35,27 @@ fun PantallaPrincipal(viewModel: PantallaPrincipalViewModel) {
     val hoy = Date()
 
     val isFormValid = viewModel.esFormularioValido()
+    val numeroCuentaDuplicado = remember(
+        uiState.listaCuentas,
+        uiState.numeroCuenta,
+        uiState.fecha,
+        uiState.cuentaEditando
+    ) {
+        viewModel.esNumeroCuentaDuplicadoEnMes(
+            numeroCuenta = uiState.numeroCuenta,
+            fecha = uiState.fecha,
+            idExcluir = uiState.cuentaEditando?.id
+        )
+    }
+
+    var filtroEstado by rememberSaveable { mutableStateOf("todas") }
+    val listaCuentasFiltradas = remember(listaCuentas, filtroEstado) {
+        when (filtroEstado) {
+            "pendientes" -> listaCuentas.filter { !it.pagada }
+            "pagadas" -> listaCuentas.filter { it.pagada }
+            else -> listaCuentas
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -80,7 +105,13 @@ fun PantallaPrincipal(viewModel: PantallaPrincipalViewModel) {
                         value = uiState.numeroCuenta,
                         onValueChange = { viewModel.onNumeroCuentaChange(it) },
                         label = { Text("Número de cuenta") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = numeroCuentaDuplicado && uiState.numeroCuenta.isNotBlank() && uiState.fecha.isNotBlank(),
+                        supportingText = {
+                            if (numeroCuentaDuplicado && uiState.numeroCuenta.isNotBlank() && uiState.fecha.isNotBlank()) {
+                                Text("Ese número de cuenta ya existe en el mismo mes")
+                            }
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -152,7 +183,7 @@ fun PantallaPrincipal(viewModel: PantallaPrincipalViewModel) {
                             viewModel.limpiarFormulario()
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = isFormValid
+                        enabled = isFormValid && !numeroCuentaDuplicado
                     ) {
                         Text(if (uiState.cuentaEditando == null) "Guardar Cuenta" else "Actualizar Cuenta")
                     }
@@ -169,7 +200,7 @@ fun PantallaPrincipal(viewModel: PantallaPrincipalViewModel) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
 
-                    Text("Total a pagar")
+                    Text("Total pendiente")
 
                     Text(
                         totalTexto,
@@ -189,18 +220,53 @@ fun PantallaPrincipal(viewModel: PantallaPrincipalViewModel) {
             )
         }
 
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = filtroEstado == "todas",
+                    onClick = { filtroEstado = "todas" },
+                    label = { Text("Todas") }
+                )
+                FilterChip(
+                    selected = filtroEstado == "pendientes",
+                    onClick = { filtroEstado = "pendientes" },
+                    label = { Text("Pendientes") }
+                )
+                FilterChip(
+                    selected = filtroEstado == "pagadas",
+                    onClick = { filtroEstado = "pagadas" },
+                    label = { Text("Pagadas") }
+                )
+            }
+        }
+
         item { Spacer(modifier = Modifier.height(8.dp)) }
 
-        items(listaCuentas) { cuenta ->
+        items(listaCuentasFiltradas, key = { it.id }) { cuenta ->
 
             val fechaPago = parseFechaApp(cuenta.fecha)
-            val vencido = fechaPago != null && fechaPago.before(hoy)
+            val vencido = !cuenta.pagada && fechaPago != null && fechaPago.before(hoy)
+            val colorCardAnimado by animateColorAsState(
+                targetValue = if (cuenta.pagada) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+                animationSpec = tween(durationMillis = 350),
+                label = "card_pago_color"
+            )
 
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 6.dp),
-                elevation = CardDefaults.cardElevation(4.dp)
+                elevation = CardDefaults.cardElevation(4.dp),
+                colors = CardDefaults.cardColors(containerColor = colorCardAnimado)
             ) {
 
                 Row(
@@ -223,6 +289,32 @@ fun PantallaPrincipal(viewModel: PantallaPrincipalViewModel) {
 
                         Text("Monto: ${formatearMontoApp(cuenta.monto)}")
 
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = {
+                                Text(
+                                    if (cuenta.pagada) {
+                                        "Pagada${cuenta.fechaPago?.let { " - " + it } ?: ""}"
+                                    } else {
+                                        if (vencido) "Pendiente vencida" else "Pendiente"
+                                    }
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                disabledContainerColor = when {
+                                    cuenta.pagada -> MaterialTheme.colorScheme.primaryContainer
+                                    vencido -> MaterialTheme.colorScheme.errorContainer
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                },
+                                disabledLabelColor = when {
+                                    cuenta.pagada -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    vencido -> MaterialTheme.colorScheme.onErrorContainer
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        )
+
                         Text(
                             "Fecha: ${cuenta.fecha}",
                             color = if (vencido)
@@ -233,6 +325,39 @@ fun PantallaPrincipal(viewModel: PantallaPrincipalViewModel) {
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalIconButton(
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = if (cuenta.pagada) {
+                                    MaterialTheme.colorScheme.tertiaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                },
+                                contentColor = if (cuenta.pagada) {
+                                    MaterialTheme.colorScheme.onTertiaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                }
+                            ),
+                            onClick = {
+                                if (cuenta.pagada) {
+                                    viewModel.reabrirCuenta(cuenta)
+                                    recordatorioHelper.programarRecordatorio(
+                                        cuenta.nombre,
+                                        cuenta.numeroCuenta,
+                                        cuenta.fecha
+                                    )
+                                } else {
+                                    viewModel.marcarCuentaComoPagada(cuenta)
+                                    recordatorioHelper.cancelarRecordatorio(cuenta.numeroCuenta)
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = if (cuenta.pagada) "Reabrir" else "Marcar pagada"
+                            )
+                        }
+
                         FilledTonalIconButton(
                             onClick = {
                                 viewModel.iniciarEdicion(cuenta)
