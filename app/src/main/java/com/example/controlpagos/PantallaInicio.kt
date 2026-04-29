@@ -1,16 +1,19 @@
 package com.example.controlpagos
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.controlpagos.model.Cuenta
+import com.example.controlpagos.model.Ingreso
 import java.util.*
 
 @Composable
-fun PantallaInicio(listaCuentas: List<Cuenta>) {
+fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
 
     val cuentasPorMes = listaCuentas.groupBy { cuenta ->
         val fechaDate = parseFechaApp(cuenta.fecha)
@@ -37,6 +40,12 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
     val totalPagadoMesActual = cuentasMesActual
         .filter { it.pagada }
         .sumOf { it.monto }
+    val totalIngresosMesActual = listaIngresos.filter { ingreso ->
+        val fecha = parseFechaApp(ingreso.fecha) ?: return@filter false
+        val cal = Calendar.getInstance().apply { time = fecha }
+        cal.get(Calendar.YEAR) == anioActual && cal.get(Calendar.MONTH) == mesActual
+    }.sumOf { it.monto }
+    val balanceEstimadoMesActual = totalIngresosMesActual - totalPendienteMesActual
 
     fun obtenerNombreMes(clave: String): String {
         val partes = clave.split("-")
@@ -57,12 +66,25 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
         .sortedBy { parseFechaApp(it.fecha) ?: Date(Long.MAX_VALUE) }
         .take(3)
 
-    LazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f)
+                    )
+                )
+            )
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            contentPadding = PaddingValues(bottom = 80.dp)
+        ) {
 
         item {
             Text(
@@ -112,6 +134,30 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Ingresos del mes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text(formatearMontoApp(totalIngresosMesActual), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                }
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = if (balanceEstimadoMesActual >= 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Balance estimado", style = MaterialTheme.typography.labelMedium, color = if (balanceEstimadoMesActual >= 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer)
+                        Text(formatearMontoApp(balanceEstimadoMesActual), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = if (balanceEstimadoMesActual >= 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer)
+                    }
                 }
             }
         }
@@ -250,7 +296,8 @@ fun PantallaInicio(listaCuentas: List<Cuenta>) {
 
         item {
             Spacer(modifier = Modifier.height(20.dp))
-            EstadisticasPagos(listaCuentas)
+            EstadisticasPagos(listaCuentas, listaIngresos)
+        }
         }
     }
 }

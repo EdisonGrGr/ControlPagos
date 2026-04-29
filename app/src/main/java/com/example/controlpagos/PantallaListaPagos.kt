@@ -324,7 +324,7 @@ fun PantallaListaPagosScreen(
                                             )
                                         } else {
                                             viewModel.marcarCuentaComoPagada(cuenta)
-                                            recordatorioHelper.cancelarRecordatorio(cuenta.numeroCuenta)
+                                            recordatorioHelper.cancelarRecordatorio(cuenta.numeroCuenta, cuenta.fecha)
                                         }
                                     },
                                     modifier = Modifier.weight(1f)
@@ -356,7 +356,7 @@ fun PantallaListaPagosScreen(
             text = { Text("Estas seguro de que quieres eliminar esta cuenta?") },
             confirmButton = {
                 Button(onClick = {
-                    recordatorioHelper.cancelarRecordatorio(cuentaAEliminar.numeroCuenta)
+                    recordatorioHelper.cancelarRecordatorio(cuentaAEliminar.numeroCuenta, cuentaAEliminar.fecha)
                     viewModel.eliminarCuenta(cuentaAEliminar)
                     viewModel.cancelarEliminarLista()
                 }) {

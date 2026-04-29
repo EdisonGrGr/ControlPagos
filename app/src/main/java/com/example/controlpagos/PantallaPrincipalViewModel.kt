@@ -20,7 +20,6 @@ data class PantallaPrincipalUiState(
     val monto: String = "",
     val fecha: String = "",
     val cuentaEditando: Cuenta? = null,
-    val mostrarCalendario: Boolean = false,
     val cuentaAEliminar: Cuenta? = null,
     val textoBuscadorLista: String = "",
     val filtroSeleccionadoLista: String = "nombre",
@@ -181,13 +180,6 @@ class PantallaPrincipalViewModel(
         }
     }
 
-    fun abrirCalendario() {
-        _uiState.update { it.copy(mostrarCalendario = true) }
-    }
-
-    fun cerrarCalendario() {
-        _uiState.update { it.copy(mostrarCalendario = false) }
-    }
 
     fun solicitarEliminar(cuenta: Cuenta) {
         _uiState.update { it.copy(cuentaAEliminar = cuenta) }

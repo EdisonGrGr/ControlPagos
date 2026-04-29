@@ -3,7 +3,6 @@ package com.example.controlpagos
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
 
 private const val PATRON_FECHA_APP = "dd/MM/yyyy"
 
@@ -13,11 +12,6 @@ fun parseFechaApp(valor: String): Date? {
     return runCatching { formatter.parse(valor) }.getOrNull()
 }
 
-fun formatearFechaDesdeMillisUtc(millis: Long): String {
-    val formatter = SimpleDateFormat(PATRON_FECHA_APP, Locale.getDefault())
-    formatter.timeZone = TimeZone.getTimeZone("UTC")
-    return formatter.format(Date(millis))
-}
 
 fun formatearFechaApp(fecha: Date): String {
     val formatter = SimpleDateFormat(PATRON_FECHA_APP, Locale.getDefault())

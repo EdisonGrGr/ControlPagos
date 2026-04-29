@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ControlPagosTheme {
-                MenuPrincipal(db.cuentaDao())
+                MenuPrincipal(db.cuentaDao(), db.ingresoDao())
             }
         }
     }
