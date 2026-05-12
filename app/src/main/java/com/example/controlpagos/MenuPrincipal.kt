@@ -17,6 +17,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.example.controlpagos.dao.CuentaDao
 import com.example.controlpagos.dao.IngresoDao
 import com.example.controlpagos.ui.theme.FondoClaroSecundario
@@ -43,6 +44,16 @@ fun MenuPrincipal(cuentaDao: CuentaDao, ingresoDao: IngresoDao) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val rutaActual = backStackEntry?.destination?.route ?: "inicio"
 
+    fun navegarTab(ruta: String) {
+        navController.navigate(ruta) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -68,35 +79,35 @@ fun MenuPrincipal(cuentaDao: CuentaDao, ingresoDao: IngresoDao) {
                         icon = { Icon(Icons.Default.Home, contentDescription = "Inicio") },
                         label = { Text("Inicio") },
                         selected = rutaActual == "inicio",
-                        onClick = { navController.navigate("inicio") }
+                        onClick = { navegarTab("inicio") }
                     )
 
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.Add, contentDescription = "Agregar") },
                         label = { Text("Agregar") },
                         selected = rutaActual == "registrar",
-                        onClick = { navController.navigate("registrar") }
+                        onClick = { navegarTab("registrar") }
                     )
 
                     NavigationBarItem(
                         icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Lista") },
                         label = { Text("Lista") },
                         selected = rutaActual == "lista",
-                        onClick = { navController.navigate("lista") }
+                        onClick = { navegarTab("lista") }
                     )
 
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.Add, contentDescription = "Ingresos") },
                         label = { Text("Ingresos") },
                         selected = rutaActual == "ingresos",
-                        onClick = { navController.navigate("ingresos") }
+                        onClick = { navegarTab("ingresos") }
                     )
 
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.DateRange, contentDescription = "Calendario") },
                         label = { Text("Calendario") },
                         selected = rutaActual == "calendario",
-                        onClick = { navController.navigate("calendario") }
+                        onClick = { navegarTab("calendario") }
                     )
                 }
             },
@@ -130,7 +141,7 @@ fun MenuPrincipal(cuentaDao: CuentaDao, ingresoDao: IngresoDao) {
                 }
 
                 composable("ingresos") {
-                    PantallaIngresos(ingresoViewModel)
+                    PantallaIngresos(ingresoViewModel, listaCuentas)
                 }
 
                 composable("calendario") {

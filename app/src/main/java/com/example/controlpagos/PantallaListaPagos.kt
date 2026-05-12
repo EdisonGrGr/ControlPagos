@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -23,9 +24,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -43,18 +46,36 @@ fun PantallaListaPagosScreen(
     val scope = rememberCoroutineScope()
     val hoy = remember { Date() }
     var ordenSeleccionado by rememberSaveable { mutableStateOf("fechaAsc") }
+    var filtroQuincena by rememberSaveable { mutableStateOf("todas") }
+    val periodoActual = remember { periodoQuincenalDe(Date()) }
 
     val totalTodas = uiState.listaCuentas.size
     val totalPendientes = uiState.listaCuentas.count { !it.pagada }
     val totalPagadas = uiState.listaCuentas.count { it.pagada }
 
-    val cuentasOrdenadas = remember(cuentasFiltradas, ordenSeleccionado) {
-        when (ordenSeleccionado) {
-            "fechaDesc" -> cuentasFiltradas.sortedByDescending { parseFechaApp(it.fecha) ?: Date(Long.MIN_VALUE) }
-            "montoAsc" -> cuentasFiltradas.sortedBy { it.monto }
-            "montoDesc" -> cuentasFiltradas.sortedByDescending { it.monto }
-            else -> cuentasFiltradas.sortedBy { parseFechaApp(it.fecha) ?: Date(Long.MAX_VALUE) }
+    val cuentasFiltradasQuincena = remember(cuentasFiltradas, filtroQuincena) {
+        when (filtroQuincena) {
+            "1" -> cuentasFiltradas.filter { periodoQuincenalDe(it.fecha)?.quincena == 1 }
+            "2" -> cuentasFiltradas.filter { periodoQuincenalDe(it.fecha)?.quincena == 2 }
+            else -> cuentasFiltradas
         }
+    }
+
+    val cuentasOrdenadas = remember(cuentasFiltradasQuincena, ordenSeleccionado) {
+        when (ordenSeleccionado) {
+            "fechaDesc" -> cuentasFiltradasQuincena.sortedByDescending { parseFechaApp(it.fecha) ?: Date(Long.MIN_VALUE) }
+            "montoAsc" -> cuentasFiltradasQuincena.sortedBy { it.monto }
+            "montoDesc" -> cuentasFiltradasQuincena.sortedByDescending { it.monto }
+            else -> cuentasFiltradasQuincena.sortedBy { parseFechaApp(it.fecha) ?: Date(Long.MAX_VALUE) }
+        }
+    }
+    val resultadosFiltrados = cuentasOrdenadas.size
+    val resultadosPendientes = cuentasOrdenadas.count { !it.pagada }
+    val resultadosPagadas = cuentasOrdenadas.count { it.pagada }
+    val etiquetaQuincenaFiltro = when (filtroQuincena) {
+        "1" -> "1ra quincena"
+        "2" -> "2da quincena"
+        else -> "Todas las quincenas"
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -96,193 +117,234 @@ fun PantallaListaPagosScreen(
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackBarHostState) }) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
+                .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            Text(
-                text = "Lista de Pagos",
-                style = MaterialTheme.typography.headlineMedium
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        val nombre = "control_pagos_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}.csv"
-                        exportLauncher.launch(nombre)
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Exportar CSV")
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        importLauncher.launch(arrayOf("text/*", "text/csv", "application/csv"))
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Importar CSV")
-                }
+            item {
+                Text(
+                    text = "Lista de Pagos",
+                    style = MaterialTheme.typography.headlineMedium
+                )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            FilledTonalButton(
-                onClick = {
-                    val total = uiState.listaCuentas.sumOf { it.monto }
-                    val mensaje = buildString {
-                        appendLine("Resumen Control de Pagos")
-                        appendLine("Total cuentas: ${uiState.listaCuentas.size}")
-                        appendLine("Total monto: ${formatearMontoApp(total)}")
-                    }
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, "Resumen Control de Pagos")
-                        putExtra(Intent.EXTRA_TEXT, mensaje)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Compartir reporte"))
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Compartir reporte")
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = uiState.textoBuscadorLista,
-                onValueChange = { viewModel.onTextoBuscadorListaChange(it) },
-                label = { Text("Buscar...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Buscar") },
-                trailingIcon = {
-                    if (uiState.textoBuscadorLista.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.limpiarBuscadorLista() }) {
-                            Icon(Icons.Default.Close, contentDescription = "Limpiar")
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Text(
+                            text = "Vista de pagos y quincenas",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Filtra, ordena y revisa tus cuentas en una vista más clara.",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("Filtro: $etiquetaQuincenaFiltro") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                                disabledLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("Quincena actual: ${etiquetaQuincenaCorta(periodoActual.quincena)}") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                                disabledLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("Mostrando", style = MaterialTheme.typography.labelMedium)
+                                    Text(resultadosFiltrados.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("Pendientes", style = MaterialTheme.typography.labelMedium)
+                                    Text(resultadosPendientes.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("Pagadas", style = MaterialTheme.typography.labelMedium)
+                                    Text(resultadosPagadas.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+                }
+            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = {
+                            val nombre = "control_pagos_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}.csv"
+                            exportLauncher.launch(nombre)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Exportar CSV") }
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("text/*", "text/csv", "application/csv")) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Importar CSV") }
+                }
+            }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = uiState.filtroSeleccionadoLista == "nombre",
-                    onClick = { viewModel.onFiltroSeleccionadoListaChange("nombre") },
-                    label = { Text("Nombre") }
-                )
-                FilterChip(
-                    selected = uiState.filtroSeleccionadoLista == "cuenta",
-                    onClick = { viewModel.onFiltroSeleccionadoListaChange("cuenta") },
-                    label = { Text("Cuenta") }
+            item {
+                FilledTonalButton(
+                    onClick = {
+                        val total = uiState.listaCuentas.sumOf { it.monto }
+                        val mensaje = buildString {
+                            appendLine("Resumen Control de Pagos")
+                            appendLine("Total cuentas: ${uiState.listaCuentas.size}")
+                            appendLine("Total monto: ${formatearMontoApp(total)}")
+                        }
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Resumen Control de Pagos")
+                            putExtra(Intent.EXTRA_TEXT, mensaje)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Compartir reporte"))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Compartir reporte") }
+            }
+
+            item {
+                OutlinedTextField(
+                    value = uiState.textoBuscadorLista,
+                    onValueChange = { viewModel.onTextoBuscadorListaChange(it) },
+                    label = { Text("Buscar...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Buscar") },
+                    trailingIcon = {
+                        if (uiState.textoBuscadorLista.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.limpiarBuscadorLista() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Limpiar")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = uiState.filtroEstadoLista == "todas",
-                    onClick = {
-                        viewModel.onFiltroEstadoListaChange("todas")
-                    },
-                    label = { Text("Todas ($totalTodas)") }
-                )
-                FilterChip(
-                    selected = uiState.filtroEstadoLista == "pendientes",
-                    onClick = {
-                        viewModel.onFiltroEstadoListaChange("pendientes")
-                    },
-                    label = { Text("Pendientes ($totalPendientes)") }
-                )
-                FilterChip(
-                    selected = uiState.filtroEstadoLista == "pagadas",
-                    onClick = {
-                        viewModel.onFiltroEstadoListaChange("pagadas")
-                    },
-                    label = { Text("Pagadas ($totalPagadas)") }
-                )
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = uiState.filtroSeleccionadoLista == "nombre",
+                        onClick = { viewModel.onFiltroSeleccionadoListaChange("nombre") },
+                        label = { Text("Nombre") }
+                    )
+                    FilterChip(
+                        selected = uiState.filtroSeleccionadoLista == "cuenta",
+                        onClick = { viewModel.onFiltroSeleccionadoListaChange("cuenta") },
+                        label = { Text("Cuenta") }
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = ordenSeleccionado == "fechaAsc",
-                    onClick = { ordenSeleccionado = "fechaAsc" },
-                    label = { Text("Fecha asc") }
-                )
-                FilterChip(
-                    selected = ordenSeleccionado == "fechaDesc",
-                    onClick = { ordenSeleccionado = "fechaDesc" },
-                    label = { Text("Fecha desc") }
-                )
-                FilterChip(
-                    selected = ordenSeleccionado == "montoAsc",
-                    onClick = { ordenSeleccionado = "montoAsc" },
-                    label = { Text("Monto asc") }
-                )
-                FilterChip(
-                    selected = ordenSeleccionado == "montoDesc",
-                    onClick = { ordenSeleccionado = "montoDesc" },
-                    label = { Text("Monto desc") }
-                )
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(selected = uiState.filtroEstadoLista == "todas", onClick = { viewModel.onFiltroEstadoListaChange("todas") }, label = { Text("Todas ($totalTodas)") })
+                    FilterChip(selected = uiState.filtroEstadoLista == "pendientes", onClick = { viewModel.onFiltroEstadoListaChange("pendientes") }, label = { Text("Pendientes ($totalPendientes)") })
+                    FilterChip(selected = uiState.filtroEstadoLista == "pagadas", onClick = { viewModel.onFiltroEstadoListaChange("pagadas") }, label = { Text("Pagadas ($totalPagadas)") })
+                }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(selected = filtroQuincena == "todas", onClick = { filtroQuincena = "todas" }, label = { Text("Todas las quincenas") })
+                    FilterChip(selected = filtroQuincena == "1", onClick = { filtroQuincena = "1" }, label = { Text("1ra quincena") })
+                    FilterChip(selected = filtroQuincena == "2", onClick = { filtroQuincena = "2" }, label = { Text("2da quincena") })
+                }
+            }
 
-            LazyColumn {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(selected = ordenSeleccionado == "fechaAsc", onClick = { ordenSeleccionado = "fechaAsc" }, label = { Text("Fecha asc") })
+                    FilterChip(selected = ordenSeleccionado == "fechaDesc", onClick = { ordenSeleccionado = "fechaDesc" }, label = { Text("Fecha desc") })
+                    FilterChip(selected = ordenSeleccionado == "montoAsc", onClick = { ordenSeleccionado = "montoAsc" }, label = { Text("Monto asc") })
+                    FilterChip(selected = ordenSeleccionado == "montoDesc", onClick = { ordenSeleccionado = "montoDesc" }, label = { Text("Monto desc") })
+                }
+            }
+
+            if (cuentasOrdenadas.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("No hay cuentas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = if (uiState.listaCuentas.isEmpty()) {
+                                    "Aún no hay cuentas registradas. Ve a 'Agregar' para crear una nueva."
+                                } else {
+                                    "No hay resultados que coincidan con los filtros aplicados."
+                                },
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
                 items(cuentasOrdenadas, key = { it.id }) { cuenta ->
                     val fechaPago = parseFechaApp(cuenta.fecha)
                     val vencido = !cuenta.pagada && fechaPago != null && fechaPago.before(hoy)
                     val colorCardAnimado by animateColorAsState(
-                        targetValue = if (cuenta.pagada) {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        },
+                        targetValue = if (cuenta.pagada) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
                         animationSpec = tween(durationMillis = 350),
                         label = "lista_card_pago_color"
                     )
 
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         colors = CardDefaults.cardColors(containerColor = colorCardAnimado)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp)
-                        ) {
-                            Text(
-                                text = cuenta.nombre,
-                                style = MaterialTheme.typography.titleLarge
-                            )
-
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = cuenta.nombre, style = MaterialTheme.typography.titleLarge)
                             Text("Monto: ${formatearMontoApp(cuenta.monto)}")
-                            Text("Numero de cuenta: ${cuenta.numeroCuenta}")
+                            Text("Número de cuenta: ${cuenta.numeroCuenta}")
                             Text("Fecha: ${cuenta.fecha}")
+                            Spacer(modifier = Modifier.height(8.dp))
 
                             AssistChip(
                                 onClick = {},
@@ -290,7 +352,7 @@ fun PantallaListaPagosScreen(
                                 label = {
                                     Text(
                                         if (cuenta.pagada) {
-                                            "Pagada${cuenta.fechaPago?.let { " - " + it } ?: ""}"
+                                            "Pagada${cuenta.fechaPago?.let { " - $it" } ?: ""}"
                                         } else {
                                             if (vencido) "Pendiente vencida" else "Pendiente"
                                         }
@@ -317,11 +379,7 @@ fun PantallaListaPagosScreen(
                                     onClick = {
                                         if (cuenta.pagada) {
                                             viewModel.reabrirCuenta(cuenta)
-                                            recordatorioHelper.programarRecordatorio(
-                                                cuenta.nombre,
-                                                cuenta.numeroCuenta,
-                                                cuenta.fecha
-                                            )
+                                            recordatorioHelper.programarRecordatorio(cuenta.nombre, cuenta.numeroCuenta, cuenta.fecha)
                                         } else {
                                             viewModel.marcarCuentaComoPagada(cuenta)
                                             recordatorioHelper.cancelarRecordatorio(cuenta.numeroCuenta, cuenta.fecha)
@@ -333,9 +391,7 @@ fun PantallaListaPagosScreen(
                                 }
 
                                 OutlinedButton(
-                                    onClick = {
-                                        viewModel.solicitarEliminarLista(cuenta)
-                                    },
+                                    onClick = { viewModel.solicitarEliminarLista(cuenta) },
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Text("Eliminar")
@@ -353,7 +409,7 @@ fun PantallaListaPagosScreen(
         AlertDialog(
             onDismissRequest = { viewModel.cancelarEliminarLista() },
             title = { Text("Eliminar cuenta") },
-            text = { Text("Estas seguro de que quieres eliminar esta cuenta?") },
+            text = { Text("¿Estás seguro de que quieres eliminar esta cuenta?") },
             confirmButton = {
                 Button(onClick = {
                     recordatorioHelper.cancelarRecordatorio(cuentaAEliminar.numeroCuenta, cuentaAEliminar.fecha)

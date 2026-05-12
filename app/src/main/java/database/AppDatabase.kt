@@ -7,7 +7,7 @@ import com.example.controlpagos.dao.IngresoDao
 import com.example.controlpagos.model.Cuenta
 import com.example.controlpagos.model.Ingreso
 
-@Database(entities = [Cuenta::class, Ingreso::class], version = 4, exportSchema = false)
+@Database(entities = [Cuenta::class, Ingreso::class], version = 5, exportSchema = false)
 
 abstract class AppDatabase : RoomDatabase() {
 

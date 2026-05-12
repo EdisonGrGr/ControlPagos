@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -66,142 +67,260 @@ fun CalendarioPagos(cuentas: List<Cuenta>) {
         }.orEmpty()
     }
 
+    val cuentasMesMostrado = remember(cuentasPorDia, mesMostrado, anioMostrado) {
+        cuentasPorDia.filter { (clave, _) -> clave.first == anioMostrado && clave.second == mesMostrado }
+            .values
+            .flatten()
+    }
+    val totalMontoMesMostrado = remember(cuentasMesMostrado) { cuentasMesMostrado.sumOf { it.monto } }
+    val diasConPagoMesMostrado = pagosDelMes.size
+    val cuentasConPagoMesMostrado = cuentasMesMostrado.size
+    val cuentasPendientesMesMostrado = remember(cuentasMesMostrado) { cuentasMesMostrado.count { !it.pagada } }
+    val quincenaActual = periodoQuincenalDe(Date())
+
     val diasSemana = listOf("D", "L", "M", "M", "J", "V", "S")
     val nombresMeses = listOf(
         "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
     )
 
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            ) {
-                Text(
-                    text = "${nombresMeses[mesMostrado]} $anioMostrado",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.fillMaxWidth()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f)
+                    )
                 )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ElevatedButton(onClick = {
-                    if (mesMostrado == 0) {
-                        mesMostrado = 11
-                        anioMostrado -= 1
-                    } else {
-                        mesMostrado -= 1
-                    }
-                }, modifier = Modifier.wrapContentWidth()) {
-                    Text("<")
-                }
-
-                ElevatedButton(onClick = {
-                    if (mesMostrado == 11) {
-                        mesMostrado = 0
-                        anioMostrado += 1
-                    } else {
-                        mesMostrado += 1
-                    }
-                }, modifier = Modifier.wrapContentWidth()) {
-                    Text(">")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            LeyendaCalendarioPagos(hayPagosEnMes = pagosDelMes.isNotEmpty())
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Encabezado de semana y grilla mensual fija.
-            Row(modifier = Modifier.fillMaxWidth()) {
-                diasSemana.forEach {
+            )
+    ) {
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
                     Text(
-                        text = it,
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.labelMedium
+                        text = "Calendario de pagos",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Revisa tus pagos por mes, día y quincena.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = RoundedCornerShape(20.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "${nombresMeses[mesMostrado]} $anioMostrado",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Pagos visibles y días con movimiento en el mes mostrado.",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(7),
-                userScrollEnabled = false,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(320.dp)
-            ) {
-                items(primerDiaSemana) {
-                    Box(modifier = Modifier.size(40.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            CalendarioMetricCard(
+                                modifier = Modifier.weight(1f),
+                                titulo = "Pagos",
+                                valor = cuentasConPagoMesMostrado.toString(),
+                                contenidoColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            CalendarioMetricCard(
+                                modifier = Modifier.weight(1f),
+                                titulo = "Pendientes",
+                                valor = cuentasPendientesMesMostrado.toString(),
+                                contenidoColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            CalendarioMetricCard(
+                                modifier = Modifier.weight(1f),
+                                titulo = "Monto",
+                                valor = formatearMontoApp(totalMontoMesMostrado),
+                                contenidoColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            AssistChip(
+                                onClick = {},
+                                enabled = false,
+                                label = { Text("Quincena actual: ${etiquetaQuincenaCorta(quincenaActual.quincena)}") },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                                    disabledLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+
+                            AssistChip(
+                                onClick = {},
+                                enabled = false,
+                                label = { Text("Días con pago: $diasConPagoMesMostrado") },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                                    disabledLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+                        }
+                    }
                 }
 
-                items((1..diasEnMes).toList()) { dia ->
-                    val tienePago = dia in pagosDelMes
-                    val esHoy = dia == hoyDia && mesMostrado == hoyMes && anioMostrado == hoyAnio
+                Spacer(modifier = Modifier.height(12.dp))
 
-                    Box(
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .size(40.dp)
-                            .then(
-                                if (tienePago) Modifier.clickable { diaSeleccionado = dia }
-                                else Modifier
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (tienePago) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        color = if (diaSeleccionado == dia) {
-                                            MaterialTheme.colorScheme.secondary
-                                        } else {
-                                            MaterialTheme.colorScheme.primary
-                                        },
-                                        shape = RoundedCornerShape(8.dp)
-                                    ),
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = dia.toString(),
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            if (mesMostrado == 0) {
+                                mesMostrado = 11
+                                anioMostrado -= 1
+                            } else {
+                                mesMostrado -= 1
                             }
-                        } else {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color.Transparent,
-                                modifier = if (esHoy) {
-                                    Modifier.border(
-                                        width = 2.dp,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            ) {
+                        }
+                    ) {
+                        Text("◀ Mes")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (mesMostrado == 11) {
+                                mesMostrado = 0
+                                anioMostrado += 1
+                            } else {
+                                mesMostrado += 1
+                            }
+                        }
+                    ) {
+                        Text("Mes ▶")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LeyendaCalendarioPagos(hayPagosEnMes = pagosDelMes.isNotEmpty())
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Encabezado de semana y grilla mensual fija.
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    diasSemana.forEach {
+                        Text(
+                            text = it,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(7),
+                    userScrollEnabled = false,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(340.dp)
+                ) {
+                    items(primerDiaSemana) {
+                        Box(modifier = Modifier.size(40.dp))
+                    }
+
+                    items((1..diasEnMes).toList()) { dia ->
+                        val tienePago = dia in pagosDelMes
+                        val esHoy = dia == hoyDia && mesMostrado == hoyMes && anioMostrado == hoyAnio
+
+                        Box(
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(40.dp)
+                                .then(
+                                    if (tienePago) Modifier.clickable { diaSeleccionado = dia }
+                                    else Modifier
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (tienePago) {
                                 Box(
-                                    modifier = Modifier.size(32.dp),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            color = if (diaSeleccionado == dia) {
+                                                MaterialTheme.colorScheme.secondaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.primaryContainer
+                                            },
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .then(
+                                            if (esHoy) {
+                                                Modifier.border(
+                                                    width = 2.dp,
+                                                    color = MaterialTheme.colorScheme.tertiary,
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                            } else Modifier
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = dia.toString(),
-                                        fontWeight = if (esHoy) FontWeight.Bold else FontWeight.Normal
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
                                     )
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (esHoy) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
+                                    modifier = if (esHoy) {
+                                        Modifier.border(
+                                            width = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                ) {
+                                    Box(
+                                        modifier = Modifier.size(34.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = dia.toString(),
+                                            fontWeight = if (esHoy) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -224,11 +343,25 @@ fun CalendarioPagos(cuentas: List<Cuenta>) {
                 )
 
                 val totalDelDia = pagosDelDiaSeleccionado.sumOf { it.monto }
-                Text(
-                    text = "Total: ${formatearMontoApp(totalDelDia)}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "Total del día: ${formatearMontoApp(totalDelDia)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "${pagosDelDiaSeleccionado.size} pago(s) en este día",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -311,6 +444,25 @@ private fun LeyendaItem(color: Color, texto: String) {
             text = texto,
             style = MaterialTheme.typography.labelMedium
         )
+    }
+}
+
+@Composable
+private fun CalendarioMetricCard(
+    modifier: Modifier = Modifier,
+    titulo: String,
+    valor: String,
+    contenidoColor: Color
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(titulo, style = MaterialTheme.typography.labelMedium, color = contenidoColor)
+            Text(valor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contenidoColor)
+        }
     }
 }
 

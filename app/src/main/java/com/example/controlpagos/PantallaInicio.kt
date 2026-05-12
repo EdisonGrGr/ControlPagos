@@ -1,37 +1,45 @@
 package com.example.controlpagos
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.controlpagos.model.Cuenta
 import com.example.controlpagos.model.Ingreso
-import java.util.*
+import java.util.Calendar
+import java.util.Date
 
 @Composable
 fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
 
-    val cuentasPorMes = listaCuentas.groupBy { cuenta ->
-        val fechaDate = parseFechaApp(cuenta.fecha)
-        val calendar = Calendar.getInstance()
-        if (fechaDate != null) {
-            calendar.time = fechaDate
-        }
-
+    val cuentasPorMes = listaCuentas.mapNotNull { cuenta ->
+        val fechaDate = parseFechaApp(cuenta.fecha) ?: return@mapNotNull null
+        val calendar = Calendar.getInstance().apply { time = fechaDate }
         val mes = calendar.get(Calendar.MONTH)
         val anio = calendar.get(Calendar.YEAR)
-
-        "$mes-$anio"
-    }
+        "$anio-$mes" to cuenta
+    }.groupBy({ it.first }, { it.second })
 
     val calendar = Calendar.getInstance()
     val mesActual = calendar.get(Calendar.MONTH)
     val anioActual = calendar.get(Calendar.YEAR)
-    val claveActual = "$mesActual-$anioActual"
+    val claveActual = "$anioActual-$mesActual"
 
     val cuentasMesActual = cuentasPorMes[claveActual].orEmpty()
     val totalPendienteMesActual = cuentasMesActual
@@ -46,11 +54,18 @@ fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
         cal.get(Calendar.YEAR) == anioActual && cal.get(Calendar.MONTH) == mesActual
     }.sumOf { it.monto }
     val balanceEstimadoMesActual = totalIngresosMesActual - totalPendienteMesActual
+    val resumenQuincenalMesActualEstado = remember(listaCuentas, listaIngresos) {
+        resumenQuincenalMesActual(listaCuentas, listaIngresos)
+    }
+    val periodoActual = remember { periodoQuincenalDe(Date()) }
+    val resumenQuincenaActual = resumenQuincenalMesActualEstado.firstOrNull { it.periodo.quincena == periodoActual.quincena }
+    val totalCuentasMesActual = cuentasMesActual.size
+    val cuentasPagadasMesActual = cuentasMesActual.count { it.pagada }
 
     fun obtenerNombreMes(clave: String): String {
         val partes = clave.split("-")
-        val mes = partes[0].toInt()
-        val anio = partes[1]
+        val anio = partes.getOrNull(0) ?: return clave
+        val mes = partes.getOrNull(1)?.toIntOrNull() ?: return clave
 
         val meses = listOf(
             "Enero", "Febrero", "Marzo", "Abril",
@@ -60,6 +75,18 @@ fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
 
         return "${meses[mes]} $anio"
     }
+
+    fun descomponerClaveMes(clave: String): Pair<Int, Int> {
+        val partes = clave.split("-")
+        val anio = partes.getOrNull(0)?.toIntOrNull() ?: 0
+        val mes = partes.getOrNull(1)?.toIntOrNull() ?: 0
+        return anio to mes
+    }
+
+    val resumenMensualOrdenado = cuentasPorMes.toList().sortedWith(
+        compareByDescending<Pair<String, List<Cuenta>>> { descomponerClaveMes(it.first).first }
+            .thenByDescending { descomponerClaveMes(it.first).second }
+    )
 
     val proximosPagos = listaCuentas
         .filter { !it.pagada }
@@ -103,7 +130,65 @@ fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
             )
         }
 
-        item { Spacer(modifier = Modifier.height(24.dp)) }
+        item {
+            Spacer(modifier = Modifier.height(18.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        text = "Tablero principal",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Resumen del mes actual y la quincena activa en una sola vista.",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        MiniIndicadorInicio(
+                            modifier = Modifier.weight(1f),
+                            titulo = "Cuentas",
+                            valor = totalCuentasMesActual.toString(),
+                            contenidoColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        MiniIndicadorInicio(
+                            modifier = Modifier.weight(1f),
+                            titulo = "Pagadas",
+                            valor = cuentasPagadasMesActual.toString(),
+                            contenidoColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        MiniIndicadorInicio(
+                            modifier = Modifier.weight(1f),
+                            titulo = "Pendientes",
+                            valor = cuentasMesActual.count { !it.pagada }.toString(),
+                            contenidoColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("${nombreMesEsp(mesActual)} $anioActual • ${etiquetaPeriodoQuincenal(resumenQuincenaActual?.periodo ?: periodoActual)}") },
+                        colors = AssistChipDefaults.assistChipColors(
+                            disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                            disabledLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    )
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(18.dp)) }
 
         item {
             Card(
@@ -147,7 +232,7 @@ fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("Ingresos del mes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                        Text(formatearMontoApp(totalIngresosMesActual), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text(formatearMontoApp(totalIngresosMesActual), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
                 }
                 Card(
@@ -156,7 +241,126 @@ fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("Balance estimado", style = MaterialTheme.typography.labelMedium, color = if (balanceEstimadoMesActual >= 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer)
-                        Text(formatearMontoApp(balanceEstimadoMesActual), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = if (balanceEstimadoMesActual >= 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer)
+                        Text(formatearMontoApp(balanceEstimadoMesActual), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = if (balanceEstimadoMesActual >= 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        text = "Resumen quincenal del mes actual",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${nombreMesEsp(mesActual)} $anioActual",
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (resumenQuincenaActual != null) {
+                        Text(
+                            text = etiquetaPeriodoQuincenal(resumenQuincenaActual.periodo),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("Pendiente", style = MaterialTheme.typography.labelMedium)
+                                    Text(formatearMontoApp(resumenQuincenaActual.totalPendiente), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("Ingresos", style = MaterialTheme.typography.labelMedium)
+                                    Text(formatearMontoApp(resumenQuincenaActual.totalIngresos), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Balance: ${formatearMontoApp(resumenQuincenaActual.balance)}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                resumenQuincenalMesActualEstado.forEach { resumen ->
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (resumen.periodo.quincena == periodoActual.quincena) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            }
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = etiquetaQuincenaCorta(resumen.periodo.quincena),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (resumen.periodo.quincena == periodoActual.quincena) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                            Text(
+                                text = rangoQuincenalTexto(resumen.periodo.quincena),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (resumen.periodo.quincena == periodoActual.quincena) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = formatearMontoApp(resumen.totalIngresos),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (resumen.periodo.quincena == periodoActual.quincena) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                            Text(
+                                text = "Pendiente ${formatearMontoApp(resumen.totalPendiente)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (resumen.periodo.quincena == periodoActual.quincena) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -255,7 +459,7 @@ fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
             )
         }
 
-        cuentasPorMes.toSortedMap(compareByDescending { it }).forEach { (clave, cuentas) ->
+        resumenMensualOrdenado.forEach { (clave, cuentas) ->
 
             val totalMes = cuentas.sumOf { it.monto }
             val totalPendiente = cuentas.filter { !it.pagada }.sumOf { it.monto }
@@ -294,10 +498,25 @@ fun PantallaInicio(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso>) {
             }
         }
 
-        item {
-            Spacer(modifier = Modifier.height(20.dp))
-            EstadisticasPagos(listaCuentas, listaIngresos)
-        }
         }
     }
 }
+
+@Composable
+private fun MiniIndicadorInicio(
+    modifier: Modifier = Modifier,
+    titulo: String,
+    valor: String,
+    contenidoColor: androidx.compose.ui.graphics.Color
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(titulo, style = MaterialTheme.typography.labelMedium, color = contenidoColor)
+            Text(valor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contenidoColor)
+        }
+    }
+}
+

@@ -36,9 +36,13 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             AppDatabase::class.java,
             "control_pagos_db"
-
         )
-            .fallbackToDestructiveMigration()
+            .addMigrations(
+                RoomMigrations.MIGRATION_1_2,
+                RoomMigrations.MIGRATION_2_3,
+                RoomMigrations.MIGRATION_3_4,
+                RoomMigrations.MIGRATION_4_5
+            )
             .build()
 
         setContent {

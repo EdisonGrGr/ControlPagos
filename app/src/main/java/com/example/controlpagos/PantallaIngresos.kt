@@ -22,17 +22,22 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.controlpagos.model.Cuenta
 import com.example.controlpagos.model.Ingreso
 import java.util.Calendar
 import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PantallaIngresos(viewModel: IngresoViewModel) {
+fun PantallaIngresos(viewModel: IngresoViewModel, listaCuentas: List<Cuenta> = emptyList()) {
 	val uiState by viewModel.uiState.collectAsState()
 	val listaIngresos = uiState.listaIngresos
 	val context = LocalContext.current
 	var mostrarSelectorFecha by remember { mutableStateOf(false) }
+	val resumenQuincenalMesActualEstado = remember(listaCuentas, listaIngresos) {
+		resumenQuincenalMesActual(listaCuentas, listaIngresos)
+	}
+	val periodoActual = remember { periodoQuincenalDe(Date()) }
 
 	LaunchedEffect(mostrarSelectorFecha) {
 		if (mostrarSelectorFecha) {
@@ -125,6 +130,38 @@ fun PantallaIngresos(viewModel: IngresoViewModel) {
 			item {
 				Card(
 					modifier = Modifier.fillMaxWidth(),
+					shape = RoundedCornerShape(28.dp),
+					colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+				) {
+					Column(modifier = Modifier.padding(20.dp)) {
+						Text("Resumen quincenal del mes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+						Spacer(modifier = Modifier.height(4.dp))
+						Text("Cada ingreso se agrupa en 1ra quincena (1-15) o 2da quincena (16-fin).", color = MaterialTheme.colorScheme.onSecondaryContainer)
+						Spacer(modifier = Modifier.height(12.dp))
+						Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+							resumenQuincenalMesActualEstado.forEach { resumen ->
+								Card(
+									modifier = Modifier.weight(1f),
+									colors = CardDefaults.cardColors(
+										containerColor = if (resumen.periodo.quincena == periodoActual.quincena) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+									)
+								) {
+									Column(modifier = Modifier.padding(14.dp)) {
+										Text(etiquetaQuincenaCorta(resumen.periodo.quincena), style = MaterialTheme.typography.labelMedium)
+										Text(rangoQuincenalTexto(resumen.periodo.quincena), style = MaterialTheme.typography.bodySmall)
+										Spacer(modifier = Modifier.height(8.dp))
+										Text(formatearMontoApp(resumen.totalIngresos), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			item {
+				Card(
+					modifier = Modifier.fillMaxWidth(),
 					shape = RoundedCornerShape(28.dp)
 				) {
 					Column(modifier = Modifier.padding(20.dp)) {
@@ -185,10 +222,23 @@ fun PantallaIngresos(viewModel: IngresoViewModel) {
 									Text(ingreso.concepto.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "I", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
 								}
 								Spacer(modifier = Modifier.width(12.dp))
-								Column(modifier = Modifier.weight(1f)) {
+										Column(modifier = Modifier.weight(1f)) {
 									Text(ingreso.concepto, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
 									Text("Categoría • ${ingreso.categoria}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-									Text("Fecha • ${ingreso.fecha}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+										Text("Fecha • ${ingreso.fecha}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+										val periodo = periodoQuincenalDe(ingreso.fecha)
+										periodo?.let { p ->
+											Spacer(modifier = Modifier.height(8.dp))
+											AssistChip(
+												onClick = {},
+												enabled = false,
+												label = { Text("${etiquetaQuincenaCorta(p.quincena)} • ${nombreMesEsp(p.mes)}") },
+												colors = AssistChipDefaults.assistChipColors(
+													disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+													disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+												)
+											)
+										}
 								}
 							}
 							Spacer(modifier = Modifier.height(12.dp))

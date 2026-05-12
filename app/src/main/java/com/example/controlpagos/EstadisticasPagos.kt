@@ -3,39 +3,48 @@ package com.example.controlpagos
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material3.Icon
-// Note: specific material icon imports removed to avoid unresolved-symbol issues in some projects.
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-// import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.controlpagos.model.Cuenta
 import com.example.controlpagos.model.Ingreso
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
-// AlertDialog/TextButton no se usan ahora (reemplazados por ModalBottomSheet)
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.ui.draw.clip
-import androidx.compose.runtime.mutableStateOf
 
 data class TendenciaMensual(
     val totalMesActual: Double,
@@ -50,7 +59,9 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso> =
     var periodoSeleccionado by rememberSaveable { mutableIntStateOf(6) }
     var mesSeleccionadoClave by remember { mutableStateOf<Pair<String,String>?>(null) }
 
-    val hoy = remember { Date() }
+    val hoyDate = remember { Date() }
+    // calendario de referencia para obtener año/mes fácilmente
+    val hoy = remember { Calendar.getInstance().apply { time = hoyDate } }
     val cuentasConFecha = remember(listaCuentas) {
         listaCuentas.mapNotNull { cuenta ->
             val fecha = parseFechaApp(cuenta.fecha) ?: return@mapNotNull null
@@ -65,10 +76,42 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso> =
     val totalPagadoMonto = remember(listaCuentas) {
         listaCuentas.filter { it.pagada }.sumOf { it.monto }
     }
+    val totalPendienteMesActual = remember(listaCuentas) {
+        listaCuentas.filter { cuenta ->
+            val fecha = parseFechaApp(cuenta.fecha) ?: return@filter false
+            val cal = Calendar.getInstance().apply { time = fecha }
+            cal.get(Calendar.YEAR) == hoy.get(Calendar.YEAR) && cal.get(Calendar.MONTH) == hoy.get(Calendar.MONTH) && !cuenta.pagada
+        }.sumOf { it.monto }
+    }
     val totalIngresosMonto = remember(listaIngresos) { listaIngresos.sumOf { it.monto } }
     val totalIngresosMesActual = remember(listaIngresos) { totalIngresosDelMesActual(listaIngresos) }
+    val resumenQuincenalMesActualEstado = remember(listaCuentas, listaIngresos) {
+        resumenQuincenalMesActual(listaCuentas, listaIngresos)
+    }
+    val periodoActual = remember { periodoQuincenalDe(hoyDate) }
+    val resumenQuincenaActual = resumenQuincenalMesActualEstado.firstOrNull { it.periodo.quincena == periodoActual.quincena }
+    val balanceMesActual = totalIngresosMesActual - totalPendienteMesActual
+    val totalVencidasMesActual = remember(listaCuentas, hoy) {
+        listaCuentas.count { cuenta ->
+            val fecha = parseFechaApp(cuenta.fecha) ?: return@count false
+            !cuenta.pagada && fecha.before(hoyDate)
+        }
+    }
+    val coberturaMesActual = remember(totalIngresosMesActual, totalPendienteMesActual) {
+        when {
+            totalPendienteMesActual <= 0.0 && totalIngresosMesActual <= 0.0 -> 0.0
+            totalPendienteMesActual <= 0.0 -> 100.0
+            else -> (totalIngresosMesActual / totalPendienteMesActual) * 100.0
+        }
+    }
+    val estadoSaludMesActual = when {
+        balanceMesActual >= 0 && totalVencidasMesActual == 0 -> "Mes saludable"
+        balanceMesActual >= 0 -> "Mes estable"
+        totalVencidasMesActual > 0 -> "Revisar vencidas"
+        else -> "Balance ajustado"
+    }
     val totalVencidas = remember(cuentasConFecha) {
-        cuentasConFecha.count { (cuenta, fecha) -> !cuenta.pagada && fecha.before(hoy) }
+        cuentasConFecha.count { (cuenta, fecha) -> !cuenta.pagada && fecha.before(hoyDate) }
     }
     val totalPendientes = remember(listaCuentas) { listaCuentas.count { !it.pagada } }
     val promedio = remember(listaCuentas) {
@@ -108,7 +151,7 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso> =
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Estadisticas",
+                text = "Estadísticas",
                 style = MaterialTheme.typography.titleLarge
             )
 
@@ -135,13 +178,153 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso> =
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            KpiMiniCard("Balance (mes)", formatearMontoApp(totalIngresosMesActual - totalPendienteMonto), Modifier.fillMaxWidth())
+            KpiMiniCard("Balance (mes)", formatearMontoApp(totalIngresosMesActual - totalPendienteMesActual), Modifier.fillMaxWidth())
 
             Spacer(modifier = Modifier.height(8.dp))
 
             KpiMiniCard("Promedio", formatearMontoApp(promedio), Modifier.fillMaxWidth())
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = when {
+                        balanceMesActual >= 0 && totalVencidasMesActual == 0 -> MaterialTheme.colorScheme.tertiaryContainer
+                        balanceMesActual >= 0 -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.errorContainer
+                    }
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Salud del mes",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            balanceMesActual >= 0 && totalVencidasMesActual == 0 -> MaterialTheme.colorScheme.onTertiaryContainer
+                            balanceMesActual >= 0 -> MaterialTheme.colorScheme.onPrimaryContainer
+                            else -> MaterialTheme.colorScheme.onErrorContainer
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = estadoSaludMesActual,
+                        color = when {
+                            balanceMesActual >= 0 && totalVencidasMesActual == 0 -> MaterialTheme.colorScheme.onTertiaryContainer
+                            balanceMesActual >= 0 -> MaterialTheme.colorScheme.onPrimaryContainer
+                            else -> MaterialTheme.colorScheme.onErrorContainer
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        KpiMiniCard("Balance", formatearMontoApp(balanceMesActual), Modifier.weight(1f))
+                        KpiMiniCard("Cobertura", String.format(Locale.getDefault(), "%.0f%%", coberturaMesActual), Modifier.weight(1f))
+                        KpiMiniCard("Vencidas", totalVencidasMesActual.toString(), Modifier.weight(1f))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Quincena actual",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = etiquetaPeriodoQuincenal(resumenQuincenaActual?.periodo ?: periodoActual),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        QuincenaMetricCard(
+                            modifier = Modifier.weight(1f),
+                            titulo = "Ingresos",
+                            valor = formatearMontoApp(resumenQuincenaActual?.totalIngresos ?: 0.0)
+                        )
+                        QuincenaMetricCard(
+                            modifier = Modifier.weight(1f),
+                            titulo = "Pendiente",
+                            valor = formatearMontoApp(resumenQuincenaActual?.totalPendiente ?: 0.0)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        QuincenaMetricCard(
+                            modifier = Modifier.weight(1f),
+                            titulo = "Pagado",
+                            valor = formatearMontoApp(resumenQuincenaActual?.totalPagado ?: 0.0)
+                        )
+                        QuincenaMetricCard(
+                            modifier = Modifier.weight(1f),
+                            titulo = "Balance",
+                            valor = formatearMontoApp(resumenQuincenaActual?.balance ?: 0.0)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Detalle quincenal del mes actual",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                resumenQuincenalMesActualEstado.forEach { resumen ->
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (resumen.periodo.quincena == periodoActual.quincena) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = etiquetaQuincenaCorta(resumen.periodo.quincena),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = rangoQuincenalTexto(resumen.periodo.quincena),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = formatearMontoApp(resumen.totalIngresos),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("Pendiente ${formatearMontoApp(resumen.totalPendiente)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Pagado ${formatearMontoApp(resumen.totalPagado)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Balance ${formatearMontoApp(resumen.balance)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(3, 6, 12).forEach { periodo ->
@@ -159,12 +342,12 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso> =
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary))
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.size(6.dp))
                     Text("Ingresos", style = MaterialTheme.typography.bodySmall)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(MaterialTheme.colorScheme.error))
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.size(6.dp))
                     Text("Pagos", style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -172,7 +355,7 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso> =
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Ultimos $periodoSeleccionado meses (neto ingresos - pagos)",
+                text = "Últimos $periodoSeleccionado meses (neto ingresos - pagos)",
                 style = MaterialTheme.typography.titleMedium
             )
             Text(
@@ -207,6 +390,10 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso> =
                     }
                 } else emptyList()
 
+                val resumenQuincenalDetalle = if (anio != null && mes != null) {
+                    resumenQuincenalMes(listaCuentas, listaIngresos, anio, mes)
+                } else emptyList()
+
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 ModalBottomSheet(
                     onDismissRequest = { mesSeleccionadoClave = null },
@@ -215,6 +402,23 @@ fun EstadisticasPagos(listaCuentas: List<Cuenta>, listaIngresos: List<Ingreso> =
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("Detalle: $label", style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.height(8.dp))
+                        Text("Resumen quincenal", style = MaterialTheme.typography.labelLarge)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            resumenQuincenalDetalle.forEach { resumen ->
+                                Card(
+                                    modifier = Modifier.weight(1f),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(etiquetaQuincenaCorta(resumen.periodo.quincena), style = MaterialTheme.typography.labelMedium)
+                                        Text(formatearMontoApp(resumen.totalIngresos), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Text("Pendiente ${formatearMontoApp(resumen.totalPendiente)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text("Ingresos:", style = MaterialTheme.typography.labelLarge)
                         Spacer(modifier = Modifier.height(6.dp))
                         if (ingresosDetalle.isEmpty()) Text("— Sin ingresos en este mes —", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -264,6 +468,23 @@ private fun KpiMiniCard(
 }
 
 @Composable
+private fun QuincenaMetricCard(
+    modifier: Modifier = Modifier,
+    titulo: String,
+    valor: String
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(titulo, style = MaterialTheme.typography.labelMedium)
+            Text(valor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
 private fun maximoComparativo(pagos: List<Pair<String, Double>>, ingresos: List<Pair<String, Double>>): Double {
     val maxPago = pagos.maxOfOrNull { it.second } ?: 0.0
     val maxIngreso = ingresos.maxOfOrNull { it.second } ?: 0.0
